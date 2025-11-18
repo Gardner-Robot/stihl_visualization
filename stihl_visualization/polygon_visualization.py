@@ -16,7 +16,7 @@ class PolygonVisualizationNode(Node):
     def __init__(self):
         super().__init__('polygon_marker_node')
 
-        yaml_file = get_package_share_directory('stihl_visualization') + '/config/c3.yaml'
+        yaml_file = get_package_share_directory('stihl_visualization') + '/config/stihl.yaml'
         self.mesh_path = 'package://stihl_visualization/meshes/stihl.stl'
 
         # Load coordinates from YAML
@@ -39,7 +39,7 @@ class PolygonVisualizationNode(Node):
         self.marker_pub = self.create_publisher(Marker, 'polygon_marker', 10)
         self.robot_publisher = self.create_publisher(Marker, '/robot_marker', 10)
         self.ground_publisher = self.create_publisher(Marker, '/ground_marker', 10)
-        self.robot_coords_sub = self.create_subscription(NavSatFix, 'fix', self.navsat_callback, 10)
+        self.robot_coords_sub = self.create_subscription(NavSatFix, '/ublox_gps_node/fix', self.navsat_callback, 10)
 
         # Timer to publish marker
         self.timer = self.create_timer(1.0, self.publish_marker)
@@ -158,7 +158,7 @@ class PolygonVisualizationNode(Node):
         # marker.points.append(marker.points[0])
 
         self.marker_pub.publish(marker)
-        self.get_logger().info("Publishing polygon marker on /polygon_marker")
+        self.get_logger().info(f"Publishing polygon marker: {marker}")
 
 def main(args=None):
     rclpy.init(args=args)
