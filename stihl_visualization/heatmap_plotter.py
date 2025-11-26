@@ -13,6 +13,16 @@ from stihl_vision_msgs.msg import Detection3DArray
 from stihl_vision.utils import convertToLocal
 from yaml import safe_load
 from copy import deepcopy
+from collections import Counter
+from math import hypot
+
+WEED_TYPES = ['creep_weed', 'leaf_weed', 'circle_weed', 'flower']
+
+class WeedRecord:
+    def __init__(self, position):
+        self.position = (float(position[0]), float(position[1]))
+        self.count = {weed_type: 0 for weed_type in WEED_TYPES}
+        self.count['total'] = 0
 
 class HeatmapPlotter(Node):
     """Node that maintains a grid/heatmap and updates it based on detections
@@ -30,6 +40,8 @@ class HeatmapPlotter(Node):
 
         # Robot and detection state
         self.current_position = None
+
+        self.weeds = []
 
         self.loadConfig('heatmap_config.yaml')
         self.make_grid(self.grid_width, self.grid_height, self.grid_resolution)
@@ -50,6 +62,9 @@ class HeatmapPlotter(Node):
             self.__setattr__(label+'heatmap', self.create_publisher(OccupancyGrid, self.heatmap_topic+'/'+label, qos_profile=10))
             self.__setattr__(label+'marker', self.create_publisher(MarkerArray, self.heatmap_markers_topic+'/'+label, qos_profile=10))
 
+        # timer to publish heatmap every 1 second
+        self.publish_timer = self.create_timer(1.0, self.publish_heatmap, callback_group=cb_group)
+
     def navsat_callback(self, msg: NavSatFix):
         try:
             self.current_position = []
@@ -63,15 +78,47 @@ class HeatmapPlotter(Node):
         
         self.get_logger().info(f'Received {len(msg.detections)} detections at position {self.current_position}')
         
-        if len(msg.detections) < 0 or not self.current_position:
+        if len(msg.detections) == 0 or not self.current_position:
             return
 
+        new_counts = {wt: 0 for wt in WEED_TYPES}
+        new_counts['total'] = len(msg.detections)
         for det in msg.detections:
-            #TODO use weed attack points transformed to map instead of robot position
-            self.update_heatmap_at_point(self.current_position[0], self.current_position[1], det.label)
+            if det.label in new_counts:
+                new_counts[det.label] += 1
 
+        pos = (float(self.current_position[0]), float(self.current_position[1]))
 
-        self.publish_heatmap(intensity=100/self.heatmap_max, )
+        match_idx = None
+        for i, record in enumerate(self.weeds):
+            ex, ey = record.position
+            dist = hypot(pos[0] - ex, pos[1] - ey)
+            if dist <= self.weed_merge_distance:
+                match_idx = i
+                break
+
+        if match_idx is None:
+            record = WeedRecord(pos)
+            record.count = new_counts.copy()
+            self.weeds.append(record)
+            for label in WEED_TYPES:
+                cnt = int(new_counts.get(label, 0))
+                if cnt != 0:
+                    self.update_heatmap_at_point(pos[0], pos[1], label, delta=cnt)
+        else:
+            record = self.weeds[match_idx]
+            prev = record.count.copy() 
+            record.position = pos
+            record.count = new_counts.copy()
+            for label in WEED_TYPES:
+                prev_cnt = int(prev.get(label, 0))
+                new_cnt = int(new_counts.get(label, 0))
+                delta = new_cnt - prev_cnt
+                if delta != 0:
+                    self.update_heatmap_at_point(pos[0], pos[1], label, delta=new_cnt - prev_cnt)
+
+        # publish after updating
+        self.publish_heatmap(intensity=100/self.heatmap_max)
 
     def make_grid(self, width=5.0, height=10.0, resolution=1.0):
         if resolution is None or resolution <= 0:
@@ -102,14 +149,14 @@ class HeatmapPlotter(Node):
                 pose_row.append(pose)
             self.grid_poses.append(pose_row)
 
-    def update_heatmap_at_point(self, x: float, y: float, label:str):
+    def update_heatmap_at_point(self, x: float, y: float, label:str, delta: int = 1):
         cell = self.get_cell_for_point(x, y)
         if cell is None:
             self.get_logger().warn('Point outside heatmap bounds; skipping')
             return
         col, row = cell
-        self.grid[row, col] += 1
-        self.labels_grid[label][row, col] += 1
+        self.grid[row, col] = max(self.grid[row, col] + delta, 0)
+        self.labels_grid[label][row, col] = max(self.labels_grid[label][row, col] + delta, 0)
 
     def publish_heatmap(self, intensity: int = 1):
         msg = OccupancyGrid()
@@ -208,6 +255,7 @@ class HeatmapPlotter(Node):
             self.weed_recognition_topic = config['subscribers'].get('weed_recognition_topic', 'stihl_vision/wr/weed_recognition')
             self.gps_topic = config['subscribers'].get('gps_topic', '/ublox_gps_node/fix')
             self.heatmap_max = config['grid'].get('max_occupancy', 20)
+            self.weed_merge_distance = config['grid'].get('weed_merge_distance', 0.5)
     
     def get_cell_for_point(self, x: float, y: float):
         if x is None or y is None:
