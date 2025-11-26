@@ -13,7 +13,7 @@ setup(
             ['resource/' + package_name]),
         (os.path.join('share', package_name, 'meshes'), glob('meshes/*.stl')),
         (os.path.join('share', package_name, 'meshes'), glob('meshes/*.gltf')),
-        (os.path.join('share', package_name, 'meshes'), glob('meshes/*.dae')),
+        (os.path.join('share', package_name, 'meshes'), glob('meshes/*')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
         ('share/' + package_name, ['package.xml']),
     ],
@@ -26,8 +26,8 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'movement_test = stihl_visualization.movement_test:main',
             'polygon_visualization = stihl_visualization.polygon_visualization:main',
+            'heatmap_plotter = stihl_visualization.heatmap_plotter:main',
         ],
     },
 )

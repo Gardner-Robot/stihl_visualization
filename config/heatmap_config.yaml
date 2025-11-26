@@ -1,0 +1,16 @@
+grid:
+  begin_x: -18.0
+  begin_y: -17.0
+  z_rot: -0.785
+  width: 15.0
+  height: 40.0
+  resolution: 1.0
+  max_occupancy: 15
+
+publishers:
+  heatmap_topic: 'stihl_vision/wr/heatmap'
+  heatmap_markers_topic: 'stihl_vision/wr/heatmap_markers'
+
+subscribers:
+  weed_recognition_topic: 'stihl_vision/wr/weed_recognition'
+  gps_topic: '/ublox_gps_node/fix'
