@@ -78,7 +78,7 @@ class HeatmapPlotter(Node):
         
     def detections_callback(self, msg: Detection3DArray):
         
-        if len(msg.detections) == 0 or not self.current_position:
+        if len(msg.detections) == 0 or not self.current_position or not len(self.current_position) == 2:
             return
         
         self.get_logger().info(f'Received {len(msg.detections)} detections at position {self.current_position}')
