@@ -1,3 +1,5 @@
+database_file: 'weeds.pkl'
+
 grid:
   begin_x: -18.0
   begin_y: -17.0
@@ -7,6 +9,11 @@ grid:
   resolution: 1.0
   max_occupancy: 15
   weed_merge_distance: 0.5
+  labels:
+    - 'leaf_weed'
+    - 'creep_weed'
+    - 'circle_weed'
+    - 'flower'
 
 publishers:
   heatmap_topic: 'stihl_vision/wr/heatmap'

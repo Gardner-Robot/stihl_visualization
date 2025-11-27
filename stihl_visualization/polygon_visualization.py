@@ -158,7 +158,6 @@ class PolygonVisualizationNode(Node):
         # marker.points.append(marker.points[0])
 
         self.marker_pub.publish(marker)
-        self.get_logger().info(f"Publishing polygon marker: {marker}")
 
 def main(args=None):
     rclpy.init(args=args)

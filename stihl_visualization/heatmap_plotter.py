@@ -15,6 +15,8 @@ from yaml import safe_load
 from copy import deepcopy
 from collections import Counter
 from math import hypot
+import os
+import pickle
 
 WEED_TYPES = ['creep_weed', 'leaf_weed', 'circle_weed', 'flower']
 
@@ -41,10 +43,11 @@ class HeatmapPlotter(Node):
         # Robot and detection state
         self.current_position = None
 
-        self.weeds = []
+        self.weeds: list[WeedRecord] = []
 
         self.loadConfig('heatmap_config.yaml')
         self.make_grid(self.grid_width, self.grid_height, self.grid_resolution)
+        self.loadWeeds()
         self.initRosComm()
         self.publish_heatmap()
 
@@ -58,7 +61,7 @@ class HeatmapPlotter(Node):
         self.gps_sub = self.create_subscription(NavSatFix, self.gps_topic, self.navsat_callback, 10, callback_group=cb_group)
         self.det_sub = self.create_subscription(Detection3DArray, self.weed_recognition_topic, self.detections_callback, 10, callback_group=cb_group)
         
-        for label in self.labels:
+        for label in WEED_TYPES:
             self.__setattr__(label+'heatmap', self.create_publisher(OccupancyGrid, self.heatmap_topic+'/'+label, qos_profile=10))
             self.__setattr__(label+'marker', self.create_publisher(MarkerArray, self.heatmap_markers_topic+'/'+label, qos_profile=10))
 
@@ -74,12 +77,11 @@ class HeatmapPlotter(Node):
             return
         
     def detections_callback(self, msg: Detection3DArray):
-        self.get_logger().info('Received Detection3DArray message')
-        
-        self.get_logger().info(f'Received {len(msg.detections)} detections at position {self.current_position}')
         
         if len(msg.detections) == 0 or not self.current_position:
             return
+        
+        self.get_logger().info(f'Received {len(msg.detections)} detections at position {self.current_position}')
 
         new_counts = {wt: 0 for wt in WEED_TYPES}
         new_counts['total'] = len(msg.detections)
@@ -119,6 +121,7 @@ class HeatmapPlotter(Node):
 
         # publish after updating
         self.publish_heatmap(intensity=100/self.heatmap_max)
+        self.saveWeeds()
 
     def make_grid(self, width=5.0, height=10.0, resolution=1.0):
         if resolution is None or resolution <= 0:
@@ -134,10 +137,8 @@ class HeatmapPlotter(Node):
         self.map_height = self.grid_rows * self.resolution
         self.grid = np.zeros((self.grid_rows, self.grid_cols), dtype=int)
         
-        self.labels = ['creep_weed', 'leaf_weed', 'circle_weed', 'flower']
-        
         self.labels_grid = {}
-        for label in self.labels:
+        for label in WEED_TYPES:
             self.labels_grid[label] = deepcopy(self.grid)
 
         # Precompute poses for each cell center (for marker placement)
@@ -175,7 +176,7 @@ class HeatmapPlotter(Node):
         msg.info.origin.orientation.z = float(np.sin(half))
         msg.info.origin.orientation.w = float(np.cos(half))
 
-        for label in self.labels:
+        for label in WEED_TYPES:
             msg_label = deepcopy(msg)
             data_label = self.labels_grid[label].flatten().tolist()
             msg_label.data = [min(int(v * intensity), 100) for v in data_label]
@@ -210,11 +211,6 @@ class HeatmapPlotter(Node):
                 markers.markers.append(marker)
         self.heatmap_marker_publisher.publish(markers)
 
-       
-
-        self.get_logger().info('Published heatmap and markers')
-
-
     def make_text_marker(self, pose: Pose, text, rgb=[255, 255, 255], id=0):
         duration = Duration()
         duration.sec = 100000000
@@ -244,6 +240,8 @@ class HeatmapPlotter(Node):
         with open(self.pkg_path + '/config/' + config_file, 'r') as f:
             config = safe_load(f)
             
+            self.database_file = os.path.join(self.pkg_path, config.get('database_file', 'weeds.pkl'))
+
             self.begin_x = config['grid'].get('begin_x', -15.0)
             self.begin_y = config['grid'].get('begin_y', -20.0)
             self.z_rot = config['grid'].get('z_rot', -3.14 / 4.0)
@@ -310,6 +308,52 @@ class HeatmapPlotter(Node):
         pose.orientation.w = float(np.cos(half))
 
         return pose
+
+    
+    def loadWeeds(self):
+        """Carrega explicitamente o campo 'weeds' do arquivo pickle para self.weeds."""
+
+        if os.path.exists(self.database_file):
+            try:
+                with open(self.database_file, 'rb') as f:
+                    data = pickle.load(f)
+
+                if not 'weeds' in data:
+                    self.get_logger().warn("No 'weeds' field in pickle file; starting with empty list")
+                    self.weeds = []
+                else:
+                    self.weeds = data['weeds']
+                    self.get_logger().info("Weeds loaded successfully")
+                    self.populate_heatmap()
+
+            except Exception as e:
+                self.get_logger().error(f"Error loading weeds: {e}")
+        else:
+            self.get_logger().info("No previous weeds file found")
+            self.weeds = []
+
+    def populate_heatmap(self):
+        """Populates the heatmap based on the current weeds data."""
+        num = 0
+        for record in self.weeds:
+            pos = record.position
+            for label in WEED_TYPES:
+                cnt = int(record.count.get(label, 0))
+                if cnt > 0:
+                    self.update_heatmap_at_point(pos[0], pos[1], label, delta=cnt)
+                    num += cnt
+        
+        self.get_logger().info(f"Heatmap populated with {num} weeds!")
+
+    def saveWeeds(self):
+        
+        data = {}
+        data['weeds'] = self.weeds
+        try:
+            with open(self.database_file, 'wb') as f:
+                pickle.dump(data, f)
+        except Exception as e:
+            self.get_logger().error(f"Error saving weeds: {e}")
 
 
 def main(args=None):
