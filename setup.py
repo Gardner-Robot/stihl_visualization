@@ -27,7 +27,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            'polygon_visualization = stihl_visualization.polygon_visualization:main',
+            'visualization = stihl_visualization.visualization:main',
             'heatmap_plotter = stihl_visualization.heatmap_plotter:main',
         ],
     },

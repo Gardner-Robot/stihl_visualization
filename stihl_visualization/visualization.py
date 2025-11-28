@@ -12,8 +12,9 @@ import os
 from ament_index_python.packages import get_package_share_directory
 import tf_transformations
 
-class PolygonVisualizationNode(Node):
+class VisualizationNodeNode(Node):
     def __init__(self):
+        """Node to visualize a polygon from YAML coordinates and a robot mesh based on GNSS data."""
         super().__init__('polygon_marker_node')
 
         yaml_file = get_package_share_directory('stihl_visualization') + '/config/stihl.yaml'
@@ -44,9 +45,10 @@ class PolygonVisualizationNode(Node):
         # Timer to publish marker
         self.timer = self.create_timer(1.0, self.publish_marker)
         self.ground_timer = self.create_timer(0.25, self.publish_ground)  # 10 Hz
-        self.get_logger().info("PolygonVisualizationNode started.")
+        self.get_logger().info("VisualizationNodeNode started.")
 
     def navsat_callback(self, msg):
+        """Callback for GNSS data to update robot marker position."""
         marker = Marker()
         marker.header = Header()
         marker.header.frame_id = "map"
@@ -78,7 +80,7 @@ class PolygonVisualizationNode(Node):
         self.robot_publisher.publish(marker)
 
     def publish_ground(self):
-        # --- Marker 100: Lawn Ground Cube ---
+        """Publish a large ground cube marker."""
         cube_marker = Marker()
         cube_marker.header.frame_id = 'map'
         cube_marker.ns = 'ground'
@@ -133,6 +135,7 @@ class PolygonVisualizationNode(Node):
         return local_pts
 
     def publish_marker(self):
+        """Publish the polygon marker based on local points."""
         marker = Marker()
         marker.header.frame_id = "map"
         marker.header.stamp = self.get_clock().now().to_msg()
@@ -161,7 +164,7 @@ class PolygonVisualizationNode(Node):
 
 def main(args=None):
     rclpy.init(args=args)
-    node = PolygonVisualizationNode()
+    node = VisualizationNodeNode()
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
