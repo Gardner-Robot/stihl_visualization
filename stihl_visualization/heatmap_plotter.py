@@ -55,6 +55,7 @@ class HeatmapPlotter(Node):
         self.get_logger().info('HeatmapPlotter initialized')
 
     def initRosComm(self):
+        """Initializes ROS2 publishers and subscribers."""
         self.heatmap_publisher = self.create_publisher(OccupancyGrid, self.heatmap_topic, qos_profile=10)
         self.heatmap_marker_publisher = self.create_publisher(MarkerArray, self.heatmap_markers_topic, qos_profile=10)
         
@@ -72,6 +73,7 @@ class HeatmapPlotter(Node):
         self.publish_timer = self.create_timer(1.0, self.publish_heatmap, callback_group=cb_group)
 
     def navsat_callback(self, msg: NavSatFix):
+        """Updates the current robot position based on incoming GNSS fixes."""
         try:
             self.current_position = []
             self.current_position = convertToLocal([(msg.latitude, msg.longitude)], self.origin_lat_lon)[0]
@@ -80,6 +82,7 @@ class HeatmapPlotter(Node):
             return
         
     def detections_callback(self, msg: Detection3DArray):
+        """Processes incoming detections and updates the heatmap accordingly."""
         
         if len(msg.detections) == 0 or not self.current_position or not len(self.current_position) == 2:
             return
@@ -127,6 +130,7 @@ class HeatmapPlotter(Node):
         self.saveWeeds()
 
     def make_grid(self, width=5.0, height=10.0, resolution=1.0):
+        """Initializes the heatmap grid with given dimensions and resolution."""
         if resolution is None or resolution <= 0:
             raise ValueError('resolution must be positive')
 
@@ -154,6 +158,7 @@ class HeatmapPlotter(Node):
             self.grid_poses.append(pose_row)
 
     def update_heatmap_at_point(self, x: float, y: float, label:str, delta: int = 1):
+        """Updates the heatmap grid at the cell containing point (x, y) by delta."""
         cell = self.get_cell_for_point(x, y)
         if cell is None:
             self.get_logger().warn('Point outside heatmap bounds; skipping')
@@ -163,6 +168,7 @@ class HeatmapPlotter(Node):
         self.labels_grid[label][row, col] = max(self.labels_grid[label][row, col] + delta, 0)
 
     def publish_heatmap(self, intensity: int = 1):
+        """Publishes the OccupancyGrid heatmap and text markers for non-empty cells."""
         msg = OccupancyGrid()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'map'
@@ -215,6 +221,7 @@ class HeatmapPlotter(Node):
         self.heatmap_marker_publisher.publish(markers)
 
     def make_text_marker(self, pose: Pose, text, rgb=[255, 255, 255], id=0):
+        """Creates a text marker at the given pose with specified text and color."""
         duration = Duration()
         duration.sec = 100000000
 
@@ -239,7 +246,7 @@ class HeatmapPlotter(Node):
         return marker
 
     def loadConfig(self, config_file):
-        # Load grid configuration from a file (if needed)
+        """Load grid configuration from a file (if needed)"""
         with open(self.pkg_path + '/config/' + config_file, 'r') as f:
             config = safe_load(f)
             
@@ -259,6 +266,7 @@ class HeatmapPlotter(Node):
             self.weed_merge_distance = config['grid'].get('weed_merge_distance', 0.5)
     
     def get_cell_for_point(self, x: float, y: float):
+        """Returns the (col, row) of the cell containing the point (x, y)."""
         if x is None or y is None:
             return None
 
@@ -286,6 +294,7 @@ class HeatmapPlotter(Node):
         return (col, row)
 
     def get_cell_center_pose(self, col: int, row: int, z: float = 0.0) -> Pose:
+        """Returns the Pose of the center of the specified cell (col, row)."""
         if not (0 <= col < self.grid_cols and 0 <= row < self.grid_rows):
             raise ValueError('Cell indices out of range')
 
@@ -314,7 +323,7 @@ class HeatmapPlotter(Node):
 
     
     def loadWeeds(self):
-        """Carrega explicitamente o campo 'weeds' do arquivo pickle para self.weeds."""
+        """Loads previously saved weeds from the database file."""
 
         if os.path.exists(self.database_file):
             try:
@@ -349,7 +358,7 @@ class HeatmapPlotter(Node):
         self.get_logger().info(f"Heatmap populated with {num} weeds!")
 
     def saveWeeds(self):
-        
+        """Saves the current weeds to the database file."""
         data = {}
         data['weeds'] = self.weeds
         try:
