@@ -17,6 +17,7 @@ from collections import Counter
 from math import hypot
 import os
 import pickle
+from std_srvs.srv import Trigger
 
 WEED_TYPES = ['creep_weed', 'leaf_weed', 'circle_weed', 'flower']
 
@@ -60,7 +61,9 @@ class HeatmapPlotter(Node):
         cb_group = ReentrantCallbackGroup()
         self.gps_sub = self.create_subscription(NavSatFix, self.gps_topic, self.navsat_callback, 10, callback_group=cb_group)
         self.det_sub = self.create_subscription(Detection3DArray, self.weed_recognition_topic, self.detections_callback, 10, callback_group=cb_group)
-        
+
+        self.reset_service = self.create_service(Trigger, 'stihl_vision/wr/reset_weeds', self._reset_weeds_cb, callback_group=cb_group)
+
         for label in WEED_TYPES:
             self.__setattr__(label+'heatmap', self.create_publisher(OccupancyGrid, self.heatmap_topic+'/'+label, qos_profile=10))
             self.__setattr__(label+'marker', self.create_publisher(MarkerArray, self.heatmap_markers_topic+'/'+label, qos_profile=10))
@@ -355,6 +358,28 @@ class HeatmapPlotter(Node):
         except Exception as e:
             self.get_logger().error(f"Error saving weeds: {e}")
 
+    def _reset_weeds_cb(self, request, response):
+        try:
+            # Clear in-memory records and zero the grids
+            self.weeds = []
+            self.grid.fill(0)
+
+            for label in WEED_TYPES:
+                self.labels_grid[label].fill(0)
+
+            if os.path.exists(self.database_file):
+                os.remove(self.database_file)
+
+            self.publish_heatmap()
+
+            response.success = True
+            response.message = 'Weeds reset and database file removed'
+            self.get_logger().info('Weeds reset via service request')
+        except Exception as e:
+            response.success = False
+            response.message = f'Error resetting weeds: {e}'
+            self.get_logger().error(response.message)
+        return response
 
 def main(args=None):
     rclpy.init(args=args)
